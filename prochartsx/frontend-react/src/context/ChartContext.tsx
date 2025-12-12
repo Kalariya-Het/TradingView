@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import axios from 'axios';
+import { aggregateCandles } from '../utils/timeframeAggregation';
 
 export type DrawingMode = 'cursor' | 'rectangle' | 'path' | 'fibonacci';
 
@@ -50,9 +51,19 @@ type ChartContextType = {
     drawings: Drawing[];
     addDrawing: (drawing: Drawing) => void;
     removeDrawing: (id: string) => void;
+    undoDrawing: () => void;
+    redoDrawing: () => void;
+    clearAllDrawings: () => void;
+    selectedDrawingId: string | null;
+    setSelectedDrawing: (id: string | null) => void;
     series: ISeriesApi<"Candlestick"> | null;
     chart: IChartApi | null;
     loadState: (drawings: Drawing[], indicators: Indicator[]) => void;
+    timeframe: string;
+    setTimeframe: (tf: string) => void;
+    rawData: Candle[];
+    isFullscreen: boolean;
+    toggleFullscreen: () => void;
 };
 
 const ChartContext = createContext<ChartContextType | undefined>(undefined);
@@ -62,10 +73,16 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const [series, setSeriesState] = useState<ISeriesApi<"Candlestick"> | null>(null);
 
     const [drawingMode, setDrawingMode] = useState<DrawingMode>('cursor');
+    const [rawData, setRawData] = useState<Candle[]>([]);
     const [data, setData] = useState<Candle[]>([]);
+    const [timeframe, setTimeframeState] = useState('1h');
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [indicators, setIndicators] = useState<Indicator[]>([]);
     const [drawings, setDrawings] = useState<Drawing[]>([]);
+    const [drawingHistory, setDrawingHistory] = useState<Drawing[][]>([[]]);
+    const [historyIndex, setHistoryIndex] = useState(0);
+    const [selectedDrawingId, setSelectedDrawing] = useState<string | null>(null);
+    const [isFullscreen, setIsFullscreen] = useState(false);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -91,13 +108,40 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 );
                 console.log('Unique data count:', uniqueData.length);
 
-                setData(uniqueData);
+                setRawData(uniqueData);
             } catch (e) {
                 console.error('Failed to fetch data', e);
             }
         };
         fetchData();
     }, [refreshTrigger]);
+
+    // Aggregate data when timeframe or rawData changes
+    useEffect(() => {
+        if (rawData.length === 0) {
+            setData([]);
+            return;
+        }
+        const aggregated = aggregateCandles(rawData, timeframe);
+        console.log(`Aggregated from ${rawData.length} to ${aggregated.length} candles for ${timeframe}`);
+        setData(aggregated);
+    }, [rawData, timeframe]);
+
+    // Handle keyboard shortcut for fullscreen (F key)
+    useEffect(() => {
+        const handleKeyPress = (e: KeyboardEvent) => {
+            if (e.key === 'f' || e.key === 'F') {
+                // Don't trigger if typing in input fields
+                if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+                    return;
+                }
+                e.preventDefault();
+                setIsFullscreen(prev => !prev);
+            }
+        };
+        window.addEventListener('keydown', handleKeyPress);
+        return () => window.removeEventListener('keydown', handleKeyPress);
+    }, []);
 
     const refreshData = () => {
         setRefreshTrigger(prev => prev + 1);
@@ -153,6 +197,10 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
     };
 
+    const toggleFullscreen = () => {
+        setIsFullscreen(prev => !prev);
+    };
+
     const addIndicator = (type: IndicatorType, period?: number, color?: string) => {
         const newInd: Indicator = {
             id: Math.random().toString(36).substr(2, 9),
@@ -168,11 +216,57 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     const addDrawing = (drawing: Drawing) => {
-        setDrawings([...drawings, drawing]);
+        const newDrawings = [...drawings, drawing];
+        setDrawings(newDrawings);
+        // Update history
+        const newHistory = drawingHistory.slice(0, historyIndex + 1);
+        newHistory.push(newDrawings);
+        setDrawingHistory(newHistory);
+        setHistoryIndex(newHistory.length - 1);
     };
 
     const removeDrawing = (id: string) => {
-        setDrawings(drawings.filter(d => d.id !== id));
+        const newDrawings = drawings.filter(d => d.id !== id);
+        setDrawings(newDrawings);
+        // Update history
+        const newHistory = drawingHistory.slice(0, historyIndex + 1);
+        newHistory.push(newDrawings);
+        setDrawingHistory(newHistory);
+        setHistoryIndex(newHistory.length - 1);
+        if (selectedDrawingId === id) {
+            setSelectedDrawing(null);
+        }
+    };
+
+    const undoDrawing = () => {
+        if (historyIndex > 0) {
+            const newIndex = historyIndex - 1;
+            setHistoryIndex(newIndex);
+            setDrawings(drawingHistory[newIndex]);
+            setSelectedDrawing(null);
+        }
+    };
+
+    const redoDrawing = () => {
+        if (historyIndex < drawingHistory.length - 1) {
+            const newIndex = historyIndex + 1;
+            setHistoryIndex(newIndex);
+            setDrawings(drawingHistory[newIndex]);
+            setSelectedDrawing(null);
+        }
+    };
+
+    const clearAllDrawings = () => {
+        setDrawings([]);
+        const newHistory = drawingHistory.slice(0, historyIndex + 1);
+        newHistory.push([]);
+        setDrawingHistory(newHistory);
+        setHistoryIndex(newHistory.length - 1);
+        setSelectedDrawing(null);
+    };
+
+    const setTimeframe = (tf: string) => {
+        setTimeframeState(tf);
     };
 
     const loadState = (newDrawings: Drawing[], newIndicators: Indicator[]) => {
@@ -197,9 +291,19 @@ export const ChartProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             drawings,
             addDrawing,
             removeDrawing,
+            undoDrawing,
+            redoDrawing,
+            clearAllDrawings,
+            selectedDrawingId,
+            setSelectedDrawing,
             series,
             chart,
-            loadState
+            loadState,
+            timeframe,
+            setTimeframe,
+            rawData,
+            isFullscreen,
+            toggleFullscreen
         }}>
             {children}
         </ChartContext.Provider>

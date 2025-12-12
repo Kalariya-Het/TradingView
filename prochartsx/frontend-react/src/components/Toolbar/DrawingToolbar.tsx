@@ -13,7 +13,7 @@ const Icons = {
 };
 
 export const DrawingToolbar: React.FC = () => {
-    const { drawingMode, setDrawingMode } = useChart();
+    const { drawingMode, setDrawingMode, undoDrawing, clearAllDrawings, drawings } = useChart();
 
     const tools: { mode: DrawingMode; label: string; icon: React.ReactNode }[] = [
         { mode: 'cursor', label: 'Cursor', icon: <Icons.Cursor /> },
@@ -42,17 +42,25 @@ export const DrawingToolbar: React.FC = () => {
             <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-2" />
 
             <button
-                onClick={() => console.log('Undo')}
+                onClick={undoDrawing}
                 title="Undo"
-                className="p-2 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                disabled={drawings.length === 0}
+                className={`p-2 rounded-md transition-colors ${drawings.length === 0
+                        ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                        : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    }`}
             >
                 <Icons.Undo />
             </button>
 
             <button
-                onClick={() => console.log('Remove All')}
+                onClick={clearAllDrawings}
                 title="Remove All Drawings"
-                className="p-2 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                disabled={drawings.length === 0}
+                className={`p-2 rounded-md transition-colors ${drawings.length === 0
+                        ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                        : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    }`}
             >
                 <Icons.Trash />
             </button>

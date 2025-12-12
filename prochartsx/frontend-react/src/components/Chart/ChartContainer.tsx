@@ -5,6 +5,8 @@ import { useChart } from '../../context/ChartContext';
 import { SMA, EMA, RSI, MACD } from 'technicalindicators';
 
 import { DrawingOverlay } from '../Overlay/DrawingOverlay';
+import { FullscreenOverlay } from '../Overlay/FullscreenOverlay';
+import { ChartOHLCOverlay } from './ChartOHLCOverlay';
 
 export const ChartContainer: React.FC = () => {
     const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -46,6 +48,15 @@ export const ChartContainer: React.FC = () => {
             timeScale: {
                 timeVisible: true,
                 secondsVisible: false,
+            },
+            crosshair: {
+                mode: 0, // CrosshairMode.Normal (0 = free movement, no snapping)
+                vertLine: {
+                    labelVisible: true,
+                },
+                horzLine: {
+                    labelVisible: true,
+                },
             },
         });
 
@@ -198,7 +209,9 @@ export const ChartContainer: React.FC = () => {
     return (
         <div className="w-full h-full relative">
             <div ref={chartContainerRef} className="w-full h-full" />
+            <ChartOHLCOverlay />
             <DrawingOverlay />
+            <FullscreenOverlay />
         </div>
     );
 };
